@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34607.119
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Keycloak", "Keycloak\Keycloak.csproj", "{8227C47E-6859-4E25-A38C-21A4DB993DCF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8227C47E-6859-4E25-A38C-21A4DB993DCF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8227C47E-6859-4E25-A38C-21A4DB993DCF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8227C47E-6859-4E25-A38C-21A4DB993DCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8227C47E-6859-4E25-A38C-21A4DB993DCF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {209AB236-4E30-4BDE-B6EB-0A9D763BBD5D}
+	EndGlobalSection
+EndGlobal

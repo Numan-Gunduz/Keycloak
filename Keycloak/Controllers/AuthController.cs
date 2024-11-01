@@ -1,0 +1,169 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using TokenApi.Models;
+
+namespace Keycloak.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class AuthController : ControllerBase
+    {
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+
+        public AuthController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+        {
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
+        }
+
+        // Kullanıcı kayıt
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterModel model)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var adminToken = await GetAdminTokenAsync(client);
+            if (adminToken == null)
+            {
+                return StatusCode(500, "Admin token alınamadı.");
+            }
+
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            var createUserPayload = new
+            {
+                username = model.Username,
+                enabled = true,
+                email = model.Email,
+                emailVerified = true, // E-posta doğrulanmış olarak ayarlanıyor
+                firstName = "Kullanıcı Adı", // Gerekirse ekleyebilirsiniz
+                lastName = "Kullanıcı Soyadı", // Gerekirse ekleyebilirsiniz
+                credentials = new[]
+    {
+        new { type = "password", value = model.Password, temporary = false }
+    }
+            };
+
+
+            var response = await client.PostAsJsonAsync($"{_configuration["Keycloak:Admin:BaseUrl"]}/admin/realms/{_configuration["Keycloak:Admin:Realm"]}/users", createUserPayload);
+            return response.IsSuccessStatusCode ? Ok("Kullanıcı kaydı başarılı.") : StatusCode((int)response.StatusCode, "Kullanıcı kaydı başarısız.");
+        }
+
+        // Kullanıcı girişi
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginModel model)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var tokenUrl = $"{_configuration["Keycloak:Client:BaseUrl"]}/realms/{_configuration["Keycloak:Client:Realm"]}/protocol/openid-connect/token";
+
+            var loginParameters = new Dictionary<string, string>
+            {
+                { "client_id", _configuration["Keycloak:Client:ClientId"] },
+                { "client_secret", _configuration["Keycloak:Client:ClientSecret"] },
+                { "grant_type", "password" },
+                { "username", model.Username },
+                { "password", model.Password }
+            };
+
+            var content = new FormUrlEncodedContent(loginParameters);
+            var response = await client.PostAsync(tokenUrl, content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, $"Login başarısız: {error}");
+            }
+
+            var tokenResponse = await response.Content.ReadAsStringAsync();
+            var accessToken = JsonDocument.Parse(tokenResponse).RootElement.GetProperty("access_token").GetString();
+            var refreshToken = JsonDocument.Parse(tokenResponse).RootElement.GetProperty("refresh_token").GetString();
+
+            return Ok(new { AccessToken = accessToken, RefreshToken = refreshToken });
+        }
+
+        // Refresh token ile yeni access token alma
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenModel model)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var tokenUrl = $"{_configuration["Keycloak:Client:BaseUrl"]}/realms/{_configuration["Keycloak:Client:Realm"]}/protocol/openid-connect/token";
+
+            var refreshTokenParameters = new Dictionary<string, string>
+            {
+                { "client_id", _configuration["Keycloak:Client:ClientId"] },
+                { "client_secret", _configuration["Keycloak:Client:ClientSecret"] },
+                { "grant_type", "refresh_token" },
+                { "refresh_token", model.RefreshToken }
+            };
+
+            var content = new FormUrlEncodedContent(refreshTokenParameters);
+            var response = await client.PostAsync(tokenUrl, content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, $"Refresh token başarısız: {error}");
+            }
+
+            var tokenResponse = await response.Content.ReadAsStringAsync();
+            var newAccessToken = JsonDocument.Parse(tokenResponse).RootElement.GetProperty("access_token").GetString();
+            var newRefreshToken = JsonDocument.Parse(tokenResponse).RootElement.GetProperty("refresh_token").GetString();
+
+            return Ok(new { AccessToken = newAccessToken, RefreshToken = newRefreshToken });
+        }
+
+        // Kullanıcı oturum kapatma
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout([FromBody] LogoutModel model)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var revokeUrl = $"{_configuration["Keycloak:Client:BaseUrl"]}/realms/{_configuration["Keycloak:Client:Realm"]}/protocol/openid-connect/revoke";
+
+            var logoutParameters = new Dictionary<string, string>
+    {
+        { "client_id", _configuration["Keycloak:Client:ClientId"] },
+        { "client_secret", _configuration["Keycloak:Client:ClientSecret"] },
+        { "token", model.RefreshToken },
+        { "token_type_hint", "refresh_token" }
+    };
+
+            var content = new FormUrlEncodedContent(logoutParameters);
+            var response = await client.PostAsync(revokeUrl, content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, $"Logout başarısız: {error}");
+            }
+
+            return Ok("Kullanıcı başarıyla çıkış yaptı.");
+        }
+
+
+        private async Task<string> GetAdminTokenAsync(HttpClient client)
+        {
+            var tokenUrl = $"{_configuration["Keycloak:Admin:BaseUrl"]}/realms/{_configuration["Keycloak:Admin:Realm"]}/protocol/openid-connect/token";
+
+            var adminTokenParameters = new Dictionary<string, string>
+    {
+        { "client_id", _configuration["Keycloak:Admin:ClientId"] },
+        { "client_secret", _configuration["Keycloak:Admin:ClientSecret"] },
+        { "grant_type", "client_credentials" }
+    };
+
+            var content = new FormUrlEncodedContent(adminTokenParameters);
+            var response = await client.PostAsync(tokenUrl, content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Admin Token Alınamadı: {response.StatusCode} - {error}");
+                return null; // Admin token alınamazsa null döndürülüyor
+            }
+
+            var tokenResponse = await response.Content.ReadAsStringAsync();
+            return JsonDocument.Parse(tokenResponse).RootElement.GetProperty("access_token").GetString();
+        }
+
+    }
+}
